@@ -1,0 +1,149 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  MyVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      CidrBlock: 10.0.0.0/16
+      Tags:
+       - Key: Name
+         Value: MyVPCa
+   
+  Publicsubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: us-east-1a
+      MapPublicIpOnLaunch: true
+      Tags:
+       - Key: Name
+         Value: PublicSubnet1
+
+  Publicsubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: us-east-1b
+      MapPublicIpOnLaunch: true
+      Tags:
+       - Key: Name
+         Value: PublicSubnet2
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties: 
+      Tags:
+      - Key: Name
+        Value: vpcinternetgateway
+
+  VPCGatewayattachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref MyVPC
+
+  PublicRT:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+       - Key: Name
+         Value: PublicRouteTable
+
+  Publicsubnetassociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties: 
+     RouteTableId: !Ref PublicRT
+     SubnetId: !Ref Publicsubnet
+     SubnetId: !Ref Publicsubnet1
+
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PublicRT
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  EC2SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: NLB CF
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0  
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "ALBTraffic"
+      GroupDescription: "Enable HTTP access on the inbound port for ELB"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0 
+  myLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref Publicsubnet
+        - !Ref Publicsubnet1
+      SecurityGroups: 
+        - !Ref ALBSecurityGroup
+  myLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref myTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref myLoadBalancer
+      Port: 80
+      Protocol: HTTP
+  myTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: myTargetGroup
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref MyVPC
+  myLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties: 
+      LaunchTemplateName: !Sub ${AWS::StackName}-launch-template
+      LaunchTemplateData:
+        ImageId: ami-0b5eea76982371e91
+        InstanceType: t2.micro
+        SecurityGroupIds: 
+          - !Ref EC2SecurityGroup
+        
+  myASG:        
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref myLaunchTemplate
+        Version: !GetAtt myLaunchTemplate.LatestVersionNumber
+      MaxSize: '5'
+      MinSize: '1'
+      DesiredCapacity: '2'
+      VPCZoneIdentifier: 
+        - !Ref Publicsubnet
+        - !Ref Publicsubnet1
+      TargetGroupARNs:
+        - !Ref myTargetGroup
+
+

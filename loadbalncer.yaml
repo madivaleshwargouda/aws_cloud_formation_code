@@ -1,0 +1,101 @@
+Resources:
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: My New SG for ALB
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+  ELBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "My-ALB-SG"
+      GroupDescription: "Access for ELB"
+      VpcId: vpc-0df955d3b9511bb35
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  MyEC2Instance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-051a81c2bd3e755db
+      InstanceType: t2.micro
+      KeyName: All-demo-key
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y httpd
+          sudo systemctl enable httpd
+          sudo service httpd start  
+          sudo echo '<h1>Resopnse is from WebServer-1 </h1>' | sudo tee /var/www/html/index.html
+
+  MyEC2Instance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-051a81c2bd3e755db
+      InstanceType: t2.micro
+      KeyName: All-demo-key
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y httpd
+          sudo systemctl enable httpd
+          sudo service httpd start  
+          sudo echo '<h1>Resopnse is from WebServer-2 </h1>' | sudo tee /var/www/html/index.html
+  ELBTargetGroup:
+   Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+   Properties:
+     HealthCheckIntervalSeconds: 6
+     HealthCheckTimeoutSeconds: 5
+     HealthyThresholdCount: 2
+     Port: 80
+     Protocol: HTTP
+     UnhealthyThresholdCount: 2
+     VpcId: vpc-0df955d3b9511bb35
+     TargetType: instance
+     Targets: 
+       - Id: !Ref MyEC2Instance1
+         Port: 80
+       - Id: !Ref MyEC2Instance2
+         Port: 80
+  ElasticLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Subnets: 
+        - "subnet-0005a69707e8a373a"
+        - "subnet-08f149b4deac624b9"
+      SecurityGroups: 
+        - !Ref ELBSecurityGroup
+
+  ElbListener:
+   Type: 'AWS::ElasticLoadBalancingV2::Listener'
+   Properties:
+     DefaultActions:
+       - Type: forward
+         TargetGroupArn: !Ref ELBTargetGroup
+     LoadBalancerArn: !Ref ElasticLoadBalancer
+     Port: '80'
+     Protocol: HTTP
+  

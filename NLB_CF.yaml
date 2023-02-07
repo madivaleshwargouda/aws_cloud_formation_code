@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  MyEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0b5eea76982371e91
+      InstanceType: t2.micro
+      AvailabilityZone: us-east-1a
+      KeyName: maheshkey
+      SecurityGroups:
+        - default
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          yum update -y
+          yum install -y httpd
+          systemctl enable httpd
+          service httpd start  
+          echo '<h1>HI AWS-1 </h1>' | sudo tee /var/www/html/index.html
+
+
+  MyEC2Instance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0b5eea76982371e91
+      InstanceType: t2.micro
+      AvailabilityZone: us-east-1b
+      KeyName: maheshkey
+      SecurityGroups:
+        - default
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          yum update -y
+          yum install -y httpd
+          systemctl enable httpd
+          service httpd start  
+          echo '<h1>Hi AWS 2 </h1>' | sudo tee /var/www/html/index.html
+
+  LBTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 3
+      Port: 80
+      Protocol: TCP
+      UnhealthyThresholdCount: 3
+      VpcId: vpc-0ac011027c3d7b948
+      TargetType: instance
+      Targets: 
+       - Id: !Ref MyEC2Instance
+         Port: 80
+       - Id: !Ref MyEC2Instance1
+         Port: 80
+  
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Subnets: 
+       - subnet-0e000dfca8c01ed1c
+       - subnet-0c454752e4980c869 
+       - subnet-06d25c1afa4188837
+       - subnet-09b0701205857d6e6
+      Type: 'network'
+
+  NLBListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref LBTargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: '80'
+      Protocol: TCP
